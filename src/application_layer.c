@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Função para enviar a imagem (Transmissor)
+// função para enviar a imagem (transmissor)
 int sendImage(const char *filename) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
@@ -50,7 +50,7 @@ int sendImage(const char *filename) {
     return 1;
 }
 
-// Função para receber a imagem (Receptor)
+// função para receber a imagem (receptor)
 int receiveImage(const char *filename) {
     FILE *file = fopen(filename, "wb");
     if (!file) {
@@ -61,7 +61,7 @@ int receiveImage(const char *filename) {
     unsigned char buffer[MAX_PAYLOAD_SIZE];
     int bytesRead;
     int frameNumber = 0;
-    
+
     while (1) {
         bytesRead = llread(buffer);
         if (bytesRead < 0) {
@@ -71,13 +71,13 @@ int receiveImage(const char *filename) {
             return -1;
         }
 
-        // Verificar se a conexão foi encerrada
+        // verificar se a conexão foi encerrada
         if (bytesRead == 0) {
             printf("receiveImage: No more data frames to read\n");
             break;
         }
 
-        // Escrever os dados no arquivo
+        // escrever os dados no arquivo
         size_t bytesWritten = fwrite(buffer, 1, bytesRead, file);
         if (bytesWritten != bytesRead) {
             perror("receiveImage: Error writing to file");
@@ -100,11 +100,11 @@ int receiveImage(const char *filename) {
     return 1;
 }
 
-// Função da camada de aplicação
+// função da camada de aplicação
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
-                     int nTries, int timeout, const char *filename)
+                      int nTries, int timeout, const char *filename)
 {
-    // Inicializa os parâmetros da conexão
+    // inicializa os parâmetros da conexão
     LinkLayer connectionParameters;
     strcpy(connectionParameters.serialPort, serialPort);
     connectionParameters.role = (strcmp(role, "tx") == 0) ? LlTx : LlRx;
@@ -115,7 +115,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     printf("applicationLayer: serialPort=%s, role=%s, baudRate=%d, nTries=%d, timeout=%d\n",
            serialPort, role, baudRate, nTries, timeout);
 
-    // Abre a conexão
+    // abre a conexão
     int connectionStatus = llopen(connectionParameters);
     if (connectionStatus < 0) {
         fprintf(stderr, "applicationLayer: Failed to open connection.\n");
@@ -123,7 +123,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     }
 
     if (connectionParameters.role == LlTx) {
-        // Transmissor: Enviar a imagem
+        // transmissor: enviar a imagem
         printf("Transmissor: Enviando a imagem %s\n", filename);
         if (sendImage(filename) < 0) {
             fprintf(stderr, "applicationLayer: Error sending image.\n");
@@ -132,7 +132,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
         printf("Transmissor: Imagem enviada com sucesso.\n");
     } else {
-        // Receptor: Receber a imagem
+        // receptor: receber a imagem
         printf("Receptor: Recebendo a imagem e salvando em %s\n", filename);
         if (receiveImage(filename) < 0) {
             fprintf(stderr, "applicationLayer: Error receiving image.\n");
@@ -142,7 +142,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("Receptor: Imagem recebida e salva com sucesso.\n");
     }
 
-    // Fecha a conexão
+    // fecha a conexão
     if (llclose(1) < 0) {
         fprintf(stderr, "applicationLayer: Failed to close connection.\n");
     } else {

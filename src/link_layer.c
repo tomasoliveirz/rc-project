@@ -1,4 +1,4 @@
-// Link layer protocol implementation
+// link layer protocol implementation
 
 #include "link_layer.h"
 #include "serial_port.h"
@@ -10,20 +10,8 @@
 #include <signal.h>
 #include <errno.h>
 
-// MISC
-#define _POSIX_SOURCE 1 // POSIX compliant source
-
-// processo de envio de uma imagem
-/*
-1- preparacao da imagem para o envio
-2- divisao da imagem em pacotes
-3- criacao de frames
-4- envio de frames atraves da porta de serie
-5- rececao dos frames
-6- reagendar o envio de frames que nao foram recebidos com sucesso
-7- reconstrucao da imagem
-8- fim da conexao
-*/
+// misc
+#define _POSIX_SOURCE 1 // posix compliant source
 
 typedef struct {
     unsigned char flag;
@@ -36,9 +24,9 @@ typedef struct {
 
 LinkLayer connectionParameters;
 
-extern int fd;  // Descritor da porta série
-int expected_seq_n = 0; // Número de sequência esperado para recepção
-int seq_n = 0; // Número de sequência atual para transmissão
+extern int fd;  // descritor da porta série
+int expected_seq_n = 0; // número de sequência esperado para recepção
+int seq_n = 0; // número de sequência atual para transmissão
 
 volatile int timeout_flag = 0;
 int alarmCount = 0;
@@ -59,8 +47,7 @@ void clean_frame(frame *f)
     f->bcc1 = 0;
 }
 
-
-// funcao para calcular o BCC1
+// função para calcular o BCC1
 unsigned char BCC1(unsigned char a, unsigned char c)
 {
     return a ^ c;
@@ -77,52 +64,42 @@ unsigned char BCC2(const unsigned char *data, int size)
     return bcc2;
 }
 
-// faz o stuffing dos dados - recebe um array de bytes e o seu tamanho + um array de bytes para colocar os dados stuffed
+// faz o stuffing dos dados
 int stuffing(const unsigned char *input, int inputSize, unsigned char *output)
 {
     int outputSize = 0;
 
-    // vai percorrer o array dos dados de input
     for (int i = 0; i < inputSize; i++)
     {
-        // caso encontre um byte igual ao FLAG ou ao ESCAPE
         if (input[i] == FLAG || input[i] == ESCAPE)
         {
-            // coloca o byte ESCAPE no array de output e faz XOR com o byte que encontrou
             output[outputSize++] = ESCAPE;
-            output[outputSize++] = input[i] ^ STUFFING_BYTE; // XOR com 0x20
+            output[outputSize++] = input[i] ^ STUFFING_BYTE; // xor com 0x20
         }
         else
         {
-            // caso contrario, coloca o byte no array de output
             output[outputSize++] = input[i];
         }
     }
-    // o tamanho de input e o tamanho de output podem ser diferentes caso tenha sido encontrado
-    // um byte igual ao FLAG ou ao ESCAPE
     printf("stuffing: inputSize=%d, outputSize=%d\n", inputSize, outputSize); // debug
-    return outputSize; // retorna o tamanho do array de output
+    return outputSize;
 }
 
 // faz destuffing dos dados para retirar os bytes ESCAPE
-// recebe um array de bytes e o seu tamanho + um array de bytes para colocar os dados destuffed
 int destuffing(const unsigned char *input, int inputSize, unsigned char *output)
 {
     int outputSize = 0;
-    // percorre o array de input
     for (int i = 0; i < inputSize; i++)
-    {   
-        // caso encontre um byte igual ao ESCAPE
+    {
         if (input[i] == ESCAPE)
         {
-
             i++;
             if (i < inputSize) {
                 output[outputSize++] = input[i] ^ STUFFING_BYTE;
             }
             else {
                 printf("destuffing: Error - ESCAPE at end of input\n");
-                return -1; // Erro: ESCAPE no final do input
+                return -1; // erro: ESCAPE no final do input
             }
         }
         else
@@ -134,7 +111,7 @@ int destuffing(const unsigned char *input, int inputSize, unsigned char *output)
     return outputSize;
 }
 
-// funcao para construir os frames
+// função para construir os frames
 int frame_build(unsigned char *frame, unsigned char c)
 {
     frame[0] = FLAG;
@@ -143,27 +120,27 @@ int frame_build(unsigned char *frame, unsigned char c)
     {
         if (c == C_SET || c == C_DISC || c == C_I0 || c == C_I1)
         {
-            // Transmissor envia comandos
+            // transmissor envia comandos
             frame[1] = 0x03; // A_TRANSMITTER_COMMAND
         }
         else
         {
-            // Transmissor envia respostas
-            frame[1] = 0x01; // A_TRANSMITTER_RESPONSE
+            // transmissor envia respostas
+            frame[1] = 0x01; // A_TRANSMITTER_REPLY
         }
     }
     else
     {
-        // Receptor
+        // receptor
         if (c == C_SET || c == C_DISC || c == C_I0 || c == C_I1)
         {
-            // Receptor envia comandos
+            // receptor envia comandos
             frame[1] = 0x01; // A_RECEIVER_COMMAND
         }
         else
         {
-            // Receptor envia respostas
-            frame[1] = 0x03; // A_RECEIVER_RESPONSE
+            // receptor envia respostas
+            frame[1] = 0x03; // A_RECEIVER_REPLY
         }
     }
 
@@ -176,14 +153,12 @@ int frame_build(unsigned char *frame, unsigned char c)
     return 5;
 }
 
-// funcao para construir os information frames
+// função para construir os information frames
 int data_frame_build(unsigned char *frame, const unsigned char *data, int dataSize)
 {
     frame[0] = FLAG;
     frame[1] = 0x03; // A_TRANSMITTER_COMMAND
-    
-    // numero de sequencia tem que alternar entre 0 e 1
-    // em relacao ao frame anterior
+
     if (seq_n == 0)
     {
         frame[2] = C_I0;
@@ -196,22 +171,14 @@ int data_frame_build(unsigned char *frame, const unsigned char *data, int dataSi
     frame[3] = BCC1(frame[1], frame[2]);
     printf("data_frame_build: A=%02X, C=%02X, seq_n=%d\n", frame[1], frame[2], seq_n);
 
-    // aplicar stuffing nos dados
-    // primeiro cria um array de bytes com o tamanho maximo do frame
     unsigned char stuffedData[MAX_FRAME_SIZE];
-    // depois faz o stuffing dos dados e recebe o tamanho dos dados stuffed
     int stuffedSize = stuffing(data, dataSize, stuffedData);
 
-    // copia os dados stuffed para o frame
-    // a partir da posicao 4 pois as posicoes 0, 1, 2 e 3 sao ocupadas pelo FLAG, A, C e BCC1
-    // ou seja, pelo header do frame
     memcpy(frame + 4, stuffedData, stuffedSize);
 
-    // calcular o BCC2
     unsigned char bcc2 = BCC2(data, dataSize);
     printf("data_frame_build: BCC2=%02X\n", bcc2);
 
-    // aplicar o stuffing no bcc2 caso necessário ++++++++
     if (bcc2 == FLAG || bcc2 == ESCAPE)
     {
         frame[4 + stuffedSize] = ESCAPE;
@@ -231,7 +198,7 @@ int data_frame_build(unsigned char *frame, const unsigned char *data, int dataSi
     return 4 + stuffedSize;
 }
 
-// configuracao do alarme
+// configuração do alarme
 void alarm_config()
 {
     struct sigaction sa;
@@ -246,6 +213,7 @@ void alarm_config()
     }
 }
 
+// função para ler um frame de controle
 unsigned char readControlFrame(int fd)
 {
     unsigned char byte, cField = 0;
@@ -282,7 +250,7 @@ unsigned char readControlFrame(int fd)
                 break;
             case a_rcv_state:
                 if (byte == C_RR0 || byte == C_RR1 || byte == C_REJ0 || byte == C_REJ1 || byte == C_UA || byte == C_DISC)
-                {   
+                {
                     temp_frame.c = byte;
                     cField = byte;
                     state = c_rcv_state;
@@ -322,14 +290,14 @@ unsigned char readControlFrame(int fd)
             case bcc1_rcv_state:
                 if (byte == FLAG)
                 {
-                    state = data_rcv_state; // Frame de controle recebido
+                    state = data_rcv_state;
                     clean_frame(&temp_frame);
                     return cField;
                 }
                 else
                 {
                     clean_frame(&temp_frame);
-                    state = start_state;        
+                    state = start_state;
                 }
                 break;
             default:
@@ -339,100 +307,10 @@ unsigned char readControlFrame(int fd)
             }
         }
     }
-    return 0; // Nenhum frame de controle válido recebido
+    return 0;
 }
 
-/*
-// funcao para ler um frame de controlo
-unsigned char readControlFrame(int fd, unsigned char *frame)
-{
-    unsigned char byte, cField = 0;
-    State state = start_state;
-
-    while (state != data_rcv_state && !timeout_flag)
-    {
-        if (readByteSerialPort(&byte) > 0)
-        {
-            switch (state)
-            {
-                case start_state:
-                    if (byte == FLAG)
-                    {
-                        state = flag_rcv_state;
-                        printf("readControlFrame: FLAG received\n");
-                    }
-                    break;
-                case flag_rcv_state:
-                    if ((connectionParameters.role == LlTx && (byte == 0x01 || byte == 0x03)) ||
-                        (connectionParameters.role == LlRx && (byte == 0x01 || byte == 0x03)))
-                    {
-                        state = a_rcv_state;
-                        printf("readControlFrame: A=%02X received\n", byte);
-                    }
-                    else if (byte != FLAG)
-                    {
-                        state = start_state;
-                        printf("readControlFrame: Invalid byte received - byte=%02X\n", byte);
-                    }
-                    break;
-                case a_rcv_state:
-                    if (byte == C_UA || byte == C_RR0 || byte == C_RR1 || byte == C_REJ0 ||
-                        byte == C_REJ1 || byte == C_DISC)
-                    {
-                        cField = byte;
-                        state = c_rcv_state;
-                        printf("readControlFrame: cField=%02X received\n", cField);
-                    }
-                    else if (byte == FLAG)
-                    {
-                        state = flag_rcv_state;
-                        printf("readControlFrame: FLAG received\n");
-                    }
-                    else
-                    {
-                        state = start_state;
-                    }
-                    break;
-                case c_rcv_state:
-                    if (byte == BCC1(frame[1], cField))
-                    {
-                        state = bcc1_rcv_state;
-                        printf("readControlFrame: BCC1=%02X received\n", byte);
-                    }
-                    else if (byte == FLAG)
-                    {
-                        state = flag_rcv_state;
-                    }
-                    else
-                    {
-                        printf("readControlFrame: Invalid BCC1 received - byte=%02X\n Expected=%02X\n", byte, BCC1(frame[1], cField));
-                        printf("readControlFrame: frame[1]=%02X, cField=%02X\n", frame[1], cField);
-                        state = start_state;
-                    }
-                    break;
-                case bcc1_rcv_state:
-                    if (byte == FLAG)
-                    {
-                        state = data_rcv_state; // Frame de controle recebido
-                        printf("readControlFrame: cField=%02X\n", cField);
-                        return cField;
-                    }
-                    else
-                    {
-                        state = start_state;
-                    }
-                    break;
-                default:
-                    state = start_state;
-                    break;
-            }
-        }
-    }
-    printf("readControlFrame: Timeout or invalid frame\n");
-    return 0; // Nenhum frame de controle válido recebido
-}
-*/
-// Função para enviar um frame e aguardar por confirmação
+// função para enviar um frame e aguardar por confirmação
 int sendFrameAndWait(unsigned char *frame, int framesize)
 {
     int attempts = 0;
@@ -445,25 +323,25 @@ int sendFrameAndWait(unsigned char *frame, int framesize)
         }
         printf("sendFrameAndWait: Frame sent, attempt %d\n", attempts + 1);
 
-        // Configurar alarme
+        // configurar alarme
         timeout_flag = 0;
         alarm(connectionParameters.timeout);
 
         unsigned char cField = 0;
 
-        // Aguardar confirmação
+        // aguardar confirmação
         cField = readControlFrame(fd);
 
         if (cField == C_UA || cField == C_RR0 || cField == C_RR1)
         {
-            // Confirmação recebida
-            alarm(0); // Cancelar alarme
+            // confirmação recebida
+            alarm(0);
             printf("sendFrameAndWait: Confirmation received, cField=%02X\n", cField);
             return 1;
         }
         else if (cField == C_REJ0 || cField == C_REJ1)
         {
-            // Rejeição recebida, retransmitir
+            // rejeição recebida, retransmitir
             alarm(0);
             attempts++;
             printf("sendFrameAndWait: REJ received, cField=%02X\n", cField);
@@ -471,7 +349,7 @@ int sendFrameAndWait(unsigned char *frame, int framesize)
         }
         else if (timeout_flag)
         {
-            // Timeout, incrementar tentativas
+            // timeout, incrementar tentativas
             attempts++;
             timeout_flag = 0;
             printf("sendFrameAndWait: Timeout occurred\n");
@@ -480,7 +358,7 @@ int sendFrameAndWait(unsigned char *frame, int framesize)
     }
 
     printf("sendFrameAndWait: Max attempts exceeded\n");
-    return -1; // Número máximo de tentativas excedido
+    return -1;
 }
 
 //////////////////////////////////////////////
@@ -502,7 +380,7 @@ int llopen(LinkLayer cParams)
 
     if (connectionParameters.role == LlTx)
     {
-        // Transmissor: Enviar SET e aguardar UA
+        // transmissor: enviar SET e aguardar UA
         unsigned char set_frame[5];
         frame_build(set_frame, C_SET);
 
@@ -513,13 +391,13 @@ int llopen(LinkLayer cParams)
             return -1;
         }
 
-        // Conexão estabelecida
+        // conexão estabelecida
         printf("llopen: Connection established (Transmitter)\n");
         return 1;
     }
     else if (connectionParameters.role == LlRx)
     {
-        // Receptor: Aguardar SET e enviar UA
+        // receptor: aguardar SET e enviar UA
         State state = start_state;
         unsigned char byte;
 
@@ -527,14 +405,12 @@ int llopen(LinkLayer cParams)
         {
             if (readByteSerialPort(&byte) > 0)
             {
-                // printf("llopen (Receiver): byte=%02X, state=%d\n", byte, state);
                 switch (state)
                 {
                 case start_state:
                     if (byte == FLAG)
                         state = flag_rcv_state;
                     break;
-                // No llopen do receptor (LlRx)
                 case flag_rcv_state:
                     if (byte == 0x03) // A_TRANSMITTER_COMMAND
                     {
@@ -546,7 +422,6 @@ int llopen(LinkLayer cParams)
                         state = start_state;
                     }
                     break;
-
                 case a_rcv_state:
                     if (byte == C_SET)
                         state = c_rcv_state;
@@ -566,7 +441,7 @@ int llopen(LinkLayer cParams)
                 case bcc1_rcv_state:
                     if (byte == FLAG)
                     {
-                        // Frame SET recebido, enviar UA
+                        // frame SET recebido, enviar UA
                         unsigned char ua_frame[5];
                         frame_build(ua_frame, C_UA);
                         if (writeBytesSerialPort(ua_frame, 5) < 0)
@@ -575,7 +450,7 @@ int llopen(LinkLayer cParams)
                             closeSerialPort();
                             return -1;
                         }
-                        // Conexão estabelecida
+                        // conexão estabelecida
                         printf("llopen: Connection established (Receiver)\n");
                         return 1;
                     }
@@ -604,23 +479,23 @@ int llwrite(const unsigned char *buf, int bufSize)
         return -1;
     }
 
-    // Construir o frame de dados
+    // construir o frame de dados
     unsigned char frame[MAX_FRAME_SIZE];
     int frameSize = data_frame_build(frame, buf, bufSize);
     printf("llwrite: frameSize=%d\n", frameSize);
 
-    // Enviar o frame e aguardar confirmação
+    // enviar o frame e aguardar confirmação
     if (sendFrameAndWait(frame, frameSize) < 0)
     {
         perror("llwrite: Error sending data frame or receiving acknowledgment");
         return -1;
     }
 
-    // Atualizar número de sequência
+    // atualizar número de sequência
     seq_n = 1 - seq_n;
     printf("llwrite: Data frame sent and acknowledged. seq_n updated to %d\n", seq_n);
 
-    return bufSize; // Retornar número de bytes escritos
+    return bufSize;
 }
 
 //////////////////////////////////////////////
@@ -637,7 +512,6 @@ int llread(unsigned char *packet)
     {
         if (readByteSerialPort(&byte) > 0)
         {
-            // printf("llread: byte=%02X, state=%d\n", byte, state);
             switch (state)
             {
             case start_state:
@@ -704,10 +578,10 @@ int llread(unsigned char *packet)
                 buffer[bufferSize++] = byte;
                 if (byte == FLAG)
                 {
-                    // Frame completo recebido
+                    // frame completo recebido
                     printf("llread: Complete frame received. bufferSize=%d\n", bufferSize);
-                    // Processar dados
-                    int dataSize = bufferSize - 5; // Exclui FLAGs e cabeçalho
+                    // processar dados
+                    int dataSize = bufferSize - 5;
                     unsigned char stuffedData[MAX_FRAME_SIZE];
                     memcpy(stuffedData, &buffer[4], dataSize);
 
@@ -715,7 +589,7 @@ int llread(unsigned char *packet)
                     int destuffedSize = destuffing(stuffedData, dataSize, destuffedData);
                     if (destuffedSize < 0)
                     {
-                        // Erro no destuffing
+                        // erro no destuffing
                         fprintf(stderr, "llread: Error in destuffing data\n");
                         state = start_state;
                         break;
@@ -728,7 +602,7 @@ int llread(unsigned char *packet)
 
                     if (receivedBCC2 != calculatedBCC2)
                     {
-                        // Erro no BCC2, enviar REJ
+                        // erro no BCC2, enviar REJ
                         unsigned char rej_frame[5];
                         unsigned char rej_c = (expected_seq_n == 0) ? C_REJ0 : C_REJ1;
                         frame_build(rej_frame, rej_c);
@@ -744,23 +618,23 @@ int llread(unsigned char *packet)
                         printf("llread: received_seq_n=%d, expected_seq_n=%d\n", received_seq_n, expected_seq_n);
                         if (received_seq_n == expected_seq_n)
                         {
-                            // Número de sequência esperado, enviar RR e entregar dados
+                            // número de sequência esperado, enviar RR e entregar dados
                             unsigned char rr_frame[5];
                             unsigned char rr_c = (expected_seq_n == 0) ? C_RR1 : C_RR0;
                             frame_build(rr_frame, rr_c);
                             writeBytesSerialPort(rr_frame, 5);
                             printf("llread: Correct sequence number, sent RR frame\n");
 
-                            // Atualizar número de sequência esperado
+                            // atualizar número de sequência esperado
                             expected_seq_n = 1 - expected_seq_n;
 
-                            // Copiar dados para o packet
-                            memcpy(packet, destuffedData, destuffedSize - 1); // Excluir BCC2
-                            return destuffedSize - 1; // Retornar número de bytes lidos
+                            // copiar dados para o packet
+                            memcpy(packet, destuffedData, destuffedSize - 1);
+                            return destuffedSize - 1;
                         }
                         else
                         {
-                            // Número de sequência incorreto, enviar RR com número esperado
+                            // número de sequência incorreto, enviar RR com número esperado
                             unsigned char rr_frame[5];
                             unsigned char rr_c = (expected_seq_n == 0) ? C_RR0 : C_RR1;
                             frame_build(rr_frame, rr_c);
@@ -790,8 +664,7 @@ int llclose(int showStatistics)
 {
     if (connectionParameters.role == LlTx)
     {
-
-        // Transmissor: Enviar DISC e aguardar DISC ou UA
+        // transmissor: enviar DISC e aguardar DISC ou UA
         unsigned char disc_frame[5];
         frame_build(disc_frame, C_DISC);
 
@@ -805,7 +678,7 @@ int llclose(int showStatistics)
             }
             printf("llclose: DISC frame sent, attempt %d\n", attempts + 1);
 
-            // Configurar alarme
+            // configurar alarme
             timeout_flag = 0;
             alarm(connectionParameters.timeout);
 
@@ -813,7 +686,7 @@ int llclose(int showStatistics)
             printf("llclose: cField=%02X\n", cField);
             if (cField == C_DISC)
             {
-                // Recebeu DISC do receptor, enviar UA
+                // recebeu DISC do receptor, enviar UA
                 unsigned char ua_frame[5];
                 frame_build(ua_frame, C_UA);
                 if (writeBytesSerialPort(ua_frame, 5) < 0)
@@ -823,7 +696,7 @@ int llclose(int showStatistics)
                 }
                 printf("llclose: UA frame sent, connection closed (Transmitter)\n");
 
-                // Fechar porta serial
+                // fechar porta serial
                 if (closeSerialPort() < 0)
                 {
                     perror("llclose: Error closing serial port");
@@ -834,7 +707,7 @@ int llclose(int showStatistics)
             }
             else if (timeout_flag)
             {
-                // Timeout, incrementar tentativas
+                // timeout, incrementar tentativas
                 attempts++;
                 timeout_flag = 0;
                 printf("llclose: Timeout occurred\n");
@@ -842,22 +715,18 @@ int llclose(int showStatistics)
             }
             else
             {
-                // Recebeu outro frame inesperado, ignorar e continuar
+                // recebeu outro frame inesperado, ignorar e continuar
                 printf("llclose: Unexpected frame received, cField=%02X\n", cField);
                 continue;
             }
         }
 
-        State state = start_state;
-        unsigned char byte;
-        
-
         printf("llclose: Max attempts exceeded\n");
-        return -1; // Falha ao encerrar conexão
+        return -1;
     }
     else if (connectionParameters.role == LlRx)
     {
-        // Receptor: Aguardar DISC e enviar DISC, então aguardar UA
+        // receptor: aguardar DISC e enviar DISC, então aguardar UA
         State state = start_state;
         unsigned char byte;
         int attempts = 0;
@@ -865,7 +734,6 @@ int llclose(int showStatistics)
         {
             if (readByteSerialPort(&byte) > 0)
             {
-                // printf("llclose (Receiver): byte=%02X, state=%d\n", byte, state);
                 switch (state)
                 {
                 case start_state:
@@ -883,7 +751,6 @@ int llclose(int showStatistics)
                         state = start_state;
                     }
                     break;
-
                 case a_rcv_state:
                     if (byte == C_DISC)
                         state = c_rcv_state;
@@ -893,7 +760,7 @@ int llclose(int showStatistics)
                         state = start_state;
                     break;
                 case c_rcv_state:
-                    if (byte == BCC1(0x03, C_DISC)) // Verifica BCC1 para DISC
+                    if (byte == BCC1(0x03, C_DISC))
                         state = bcc1_rcv_state;
                     else if (byte == FLAG)
                         state = flag_rcv_state;
@@ -903,7 +770,7 @@ int llclose(int showStatistics)
                 case bcc1_rcv_state:
                     if (byte == FLAG)
                     {
-                        // Frame DISC recebido, enviar DISC em resposta
+                        // frame DISC recebido, enviar DISC em resposta
                         unsigned char disc_frame[5];
                         frame_build(disc_frame, C_DISC);
                         if (writeBytesSerialPort(disc_frame, 5) < 0)
@@ -913,16 +780,15 @@ int llclose(int showStatistics)
                         }
                         printf("llclose: DISC frame sent (Receiver)\n");
 
-                        // Aguardar UA do transmissor
+                        // aguardar UA do transmissor
                         timeout_flag = 0;
                         alarm(connectionParameters.timeout);
-                        
 
                         unsigned char cField = readControlFrame(fd);
 
                         if (cField == C_UA)
                         {
-                            // Recebeu UA, conexão encerrada
+                            // recebeu UA, conexão encerrada
                             printf("llclose: UA received, connection closed (Receiver)\n");
                             if (closeSerialPort() < 0)
                             {
@@ -933,7 +799,7 @@ int llclose(int showStatistics)
                         }
                         else if (cField == C_DISC)
                         {
-                            // Recebeu outro DISC, enviar UA
+                            // recebeu outro DISC, enviar UA
                             unsigned char ua_frame[5];
                             frame_build(ua_frame, C_UA);
                             if (writeBytesSerialPort(ua_frame, 5) < 0)
@@ -943,7 +809,7 @@ int llclose(int showStatistics)
                             }
                             printf("llclose: UA frame sent in response to DISC (Receiver)\n");
 
-                            // Fechar porta serial
+                            // fechar porta serial
                             if (closeSerialPort() < 0)
                             {
                                 perror("llclose: Error closing serial port");
@@ -954,10 +820,8 @@ int llclose(int showStatistics)
                         }
                         else if (timeout_flag)
                         {
-                            // Timeout, incrementar tentativas
+                            // timeout ocorrido
                             printf("llclose: Timeout occurred while waiting for UA (Receiver)\n");
-                            // Decidir se deve tentar retransmitir DISC ou encerrar
-                            // Aqui, para simplificar, encerramos a conexão
                             if (closeSerialPort() < 0)
                             {
                                 perror("llclose: Error closing serial port");
@@ -967,7 +831,7 @@ int llclose(int showStatistics)
                         }
                         else
                         {
-                            // Recebeu outro frame inesperado, ignorar e continuar
+                            // recebeu outro frame inesperado, ignorar e continuar
                             printf("llclose: Unexpected frame received, cField=%02X (Receiver)\n", cField);
                             continue;
                         }
@@ -981,11 +845,10 @@ int llclose(int showStatistics)
                 }
             }
 
-            // Verificar se excedeu o número máximo de tentativas
             if (attempts >= connectionParameters.nRetransmissions)
             {
                 printf("llclose: Max attempts exceeded (Receiver)\n");
-                return -1; // Falha ao encerrar conexão
+                return -1;
             }
         }
     }

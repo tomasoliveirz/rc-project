@@ -11,7 +11,7 @@ BIN = bin/
 CABLE_DIR = cable/
 
 TX_SERIAL_PORT = /dev/pts/6
-RX_SERIAL_PORT = /dev/pts/9
+RX_SERIAL_PORT = /dev/pts/5
 
 BAUD_RATE = 9600
 
