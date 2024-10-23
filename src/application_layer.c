@@ -61,7 +61,7 @@ int receiveImage(const char *filename) {
     unsigned char buffer[MAX_PAYLOAD_SIZE];
     int bytesRead;
     int frameNumber = 0;
-
+    
     while (1) {
         bytesRead = llread(buffer);
         if (bytesRead < 0) {
@@ -88,6 +88,11 @@ int receiveImage(const char *filename) {
 
         printf("receiveImage: Data frame %d received and written (%d bytes)\n", frameNumber, bytesRead);
         frameNumber++;
+
+        if (bytesRead < MAX_PAYLOAD_SIZE) {
+            printf("receiveImage: Last data frame received\n");
+            break;
+        }
     }
 
     fclose(file);

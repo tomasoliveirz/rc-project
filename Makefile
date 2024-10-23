@@ -10,13 +10,13 @@ INCLUDE = include/
 BIN = bin/
 CABLE_DIR = cable/
 
-TX_SERIAL_PORT = /dev/pts/4
-RX_SERIAL_PORT = /dev/pts/5
+TX_SERIAL_PORT = /dev/pts/6
+RX_SERIAL_PORT = /dev/pts/9
 
 BAUD_RATE = 9600
 
-TX_FILE = penguin.gif
-RX_FILE = penguin_received.gif
+TX_FILE = image.gif
+RX_FILE = aah.gif
 
 # Targets
 .PHONY: all
