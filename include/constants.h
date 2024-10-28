@@ -42,14 +42,14 @@ typedef enum {
 } FrameType;
 
 typedef enum {
-    start_state,
-    flag_rcv_state,
-    a_rcv_state,
-    c_rcv_state,
-    bcc1_rcv_state,
-    data_rcv_state,
+    START_STATE,
+    FLAG_RCV,
+    A_RCV,
+    C_RCV,
+    BCC_OK,
+    DATA_RCV,
+    STOP_STATE
 } State;
-
 
 
 #endif // CONSTANTS_H
