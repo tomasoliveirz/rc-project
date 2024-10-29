@@ -405,7 +405,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 {
     printf("[APPLICATION_LAYER] Initializing application layer\n");
     // incializa os parametros da conexão (serialPort, role, baudRate, nTries, timeout)
-    LinkLayer connectionParameters;
+    LinkLayer connectionParameters; 
     strcpy(connectionParameters.serialPort, serialPort);
     connectionParameters.role = (strcmp(role, "tx") == 0) ? LlTx : LlRx;
     connectionParameters.baudRate = baudRate;
