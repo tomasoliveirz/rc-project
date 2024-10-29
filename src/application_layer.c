@@ -17,7 +17,7 @@
 
 #define MAX_SEQUENCE_NUMBER 256 // As per 1-byte sequence number
 
-// Function to build a control packet
+// funcao que cria o control packet START ou END, recebe o tipo de packet e o nome do file e o tamanho do file
 int build_control_packet(unsigned char *packet, int C, const char *filename, long filesize)
 {
     printf("[BUILD_CONTROL_PACKET] Building control packet with C=%d\n", C);
@@ -153,27 +153,28 @@ int parse_data_packet(unsigned char *packet, int size, int *sequence_number, uns
     return index; // Total number of bytes processed
 }
 
-// Function to send the image (transmitter)
+// funcao que envia a imagem (transmissor)
 int sendImage(const char *filename)
 {
     printf("[SEND_IMAGE] Starting to send image: %s\n", filename);
-    FILE *file = fopen(filename, "rb");
+    FILE *file = fopen(filename, "rb"); // abre o file e faz dele um file pointer
     if (!file)
     {
         perror("[SEND_IMAGE] Error opening file for reading");
         return -1;
     }
 
-    // Get the file size
+    // obter o tamanho do file e dar print em bytes
     fseek(file, 0, SEEK_END);
     long filesize = ftell(file);
     fseek(file, 0, SEEK_SET);
     printf("[SEND_IMAGE] File size: %ld bytes\n", filesize);
 
-    // Send START control packet
+    // envia o control packet START
     unsigned char control_packet[MAX_PAYLOAD_SIZE];
+    // dá build ao control packet
     int control_packet_size = build_control_packet(control_packet, START, filename, filesize);
-    if (control_packet_size < 0)
+    if (control_packet_size < 0) // verifica se foi bem construido
     {
         fprintf(stderr, "[SEND_IMAGE] Error building START control packet\n");
         fclose(file);
@@ -181,6 +182,7 @@ int sendImage(const char *filename)
         return -1;
     }
 
+    // caso tenha sido bem construido então envia o control packet
     printf("[SEND_IMAGE] Sending START control packet\n");
     int bytesWritten = llwrite(control_packet, control_packet_size);
     if (bytesWritten < 0)
@@ -192,12 +194,14 @@ int sendImage(const char *filename)
     }
     printf("[SEND_IMAGE] START control packet sent successfully\n");
 
-    // Now send data packets
-    unsigned char file_buffer[MAX_PAYLOAD_SIZE - 4]; // Leave room for C, S, L2, L1
+    // envia os data packets
+    // criar um buffer com o tamanho maximo do payload e deixa espaço para o header que irá ser adicionado
+    unsigned char file_buffer[MAX_PAYLOAD_SIZE - 4]; // deixa espaço para o header - C, S, L2, L1 
     size_t bytesRead;
     int sequence_number = 0;
 
     printf("[SEND_IMAGE] Starting to send data packets\n");
+    
     while ((bytesRead = fread(file_buffer, 1, sizeof(file_buffer), file)) > 0)
     {
         unsigned char data_packet[MAX_FRAME_SIZE];
@@ -400,7 +404,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
     printf("[APPLICATION_LAYER] Initializing application layer\n");
-    // Initialize connection parameters
+    // incializa os parametros da conexão (serialPort, role, baudRate, nTries, timeout)
     LinkLayer connectionParameters;
     strcpy(connectionParameters.serialPort, serialPort);
     connectionParameters.role = (strcmp(role, "tx") == 0) ? LlTx : LlRx;
@@ -411,9 +415,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     printf("[APPLICATION_LAYER] Configuration - serialPort=%s, role=%s, baudRate=%d, nTries=%d, timeout=%d\n",
            serialPort, role, baudRate, nTries, timeout);
 
-    // Open the connection
-    int connectionStatus = llopen(connectionParameters);
-    if (connectionStatus < 0)
+    // iniciar a conexão - llopen (transmissor envia SET, receptor recebe SET e envia UA)
+    if (llopen(connectionParameters) < 0)
     {
         fprintf(stderr, "[APPLICATION_LAYER] Failed to open connection.\n");
         return;
@@ -422,7 +425,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     if (connectionParameters.role == LlTx)
     {
-        // Transmitter: send the image
+        // transmissor envia a imagem
         printf("[APPLICATION_LAYER] Transmitter: Sending the image %s\n", filename);
         if (sendImage(filename) < 0)
         {
@@ -434,7 +437,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     }
     else
     {
-        // Receiver: receive the image
+        // se for o receptor, recebe a imagem
         printf("[APPLICATION_LAYER] Receiver: Receiving the image and saving to %s\n", filename);
         if (receiveImage(filename) < 0)
         {

@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "signal.h": "c",
-        "errno.h": "c"
+        "errno.h": "c",
+        "link_layer.h": "c",
+        "constants.h": "c"
     }
 }
