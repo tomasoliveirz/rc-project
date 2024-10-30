@@ -92,7 +92,7 @@ int build_data_packet(unsigned char *packet, int sequence_number, unsigned char 
     int index = 0;
     packet[index++] = DATA; // Campo C
     printf("[BUILD_DATA_PACKET] C field set to DATA (%d) at position 0\n", DATA);
-    packet[index++] = sequence_number % MAX_SEQUENCE_NUMBER; // Campo S (0-255)
+    packet[index++] = sequence_number % MAX_SEQUENCE_NUMBER; // Campo S (0-255) 
     printf("[BUILD_DATA_PACKET] S field set to %d at position 1\n", sequence_number % MAX_SEQUENCE_NUMBER);
 
     // L2, L1
@@ -282,6 +282,13 @@ int receiveImage(const char *filename) {
         if (bytesRead < 0) {
             fprintf(stderr, "[RECEIVE_IMAGE] Error reading packet\n");
             fclose(file);
+            llclose(0);
+            return -1;
+        }
+        if (bytesRead == 0) {
+            // é porque recebeu um disc, entao vai direto para o close, recebeu demasiadas retransmissões
+            // ou limite de timeout
+            fprintf(stderr, "[RECEIVE_IMAGE] Connection closed by peer, too many retransmissions or timeout\n");
             llclose(0);
             return -1;
         }

@@ -28,8 +28,8 @@
 
 #define TIMEOUT_SEC 1
 
-#define MAX_FRAME_SIZE 512
-#define MAX_PAYLOAD_SIZE 128  // Defina conforme necessário
+#define MAX_FRAME_SIZE 2000
+ // Defina conforme necessário
 
 #define STUFFING_BYTE 0x20
 

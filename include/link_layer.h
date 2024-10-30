@@ -26,6 +26,8 @@ typedef struct
 #define FALSE 0
 #define TRUE 1
 
+#define MAX_PAYLOAD_SIZE 1000
+
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return "1" on success or "-1" on error.
 int llopen(LinkLayer connectionParameters);

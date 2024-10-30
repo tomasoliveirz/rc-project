@@ -33,6 +33,7 @@ typedef struct {
 LinkLayer connectionParameters;
 unsigned char readControlFrame(int fd);
 extern int fd;  // Descritor da porta serial
+int unexpecte_disc = 0;
 
 int expected_seq_n = 0; // Número de sequência esperado para recepção
 int seq_n = 0;           // Número de sequência atual para transmissão
@@ -312,11 +313,9 @@ int data_frame_build(unsigned char *frame, const unsigned char *data, int dataSi
 // Configuração do alarme
 void alarm_config() {
     LOG_PRINTF("[ALARM_CONFIG] Configuring alarm handler\n");
-    struct sigaction sa;
-
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = alarm_handler;
-    sigemptyset(&sa.sa_mask);
+    struct sigaction sa; // estrutura de ação do sinal
+    memset(&sa, 0, sizeof(sa)); // limpar a estrutura
+    sa.sa_handler = alarm_handler; // definir o manipulador de sinal - isto vai fazer com que o sinal seja ignorado
     if (sigaction(SIGALRM, &sa, NULL) == -1) {
         perror("[ALARM_CONFIG] sigaction");
         exit(1);
@@ -495,7 +494,7 @@ unsigned char readControlFrame(int fd) {
 }
 
 //////////////////////////////////////////////
-// LLOPEN
+// LL1
 //////////////////////////////////////////////
 
 int llopen(LinkLayer cParams) {
@@ -712,10 +711,15 @@ int llread(unsigned char *packet) {
                 if (byte == C_I0 || byte == C_I1) {
                     c_field = byte;
                     state = C_RCV;
+
                     LOG_PRINTF("[LLREAD] Campo C recebido: 0x%02X, mudando para estado C_RCV\n", byte);
                 } else if (byte == FLAG) {
                     state = FLAG_RCV;
                     LOG_PRINTF("[LLREAD] FLAG recebido, mudando para estado FLAG_RCV\n");
+                } else if (byte == C_DISC) {
+                    unexpecte_disc = 1;
+                    LOG_PRINTF("[LLREAD] C_DISC recebido, mudando para DISC_RCV state\n");
+                    return -1;
                 } else {
                     state = START_STATE;
                     LOG_PRINTF("[LLREAD] Campo C inesperado: 0x%02X, resetando para START_STATE\n", byte);
@@ -915,6 +919,7 @@ int llread(unsigned char *packet) {
     LOG_PRINTF("[LLREAD] Número máximo de tentativas de leitura (%d) excedido. Falha na leitura do frame.\n", MAX_TENTATIVAS);
     return -1;
 }
+
 
 //////////////////////////////////////////////
 // LLCLOSE
