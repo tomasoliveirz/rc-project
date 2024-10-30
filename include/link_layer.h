@@ -21,11 +21,12 @@ typedef struct
 
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
-#define MAX_PAYLOAD_SIZE 2000
 
 // MISC
 #define FALSE 0
 #define TRUE 1
+
+#define MAX_PAYLOAD_SIZE 1000
 
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return "1" on success or "-1" on error.

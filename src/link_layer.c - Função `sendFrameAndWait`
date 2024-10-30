@@ -1,0 +1,8 @@
+int res = writeBytesSerialPort(frame_copy, framesize);
+if (res < 0)
+{
+    perror("[SEND_FRAME_AND_WAIT] Erro ao escrever frame na porta serial");
+    // Limpar buffer de envio ou reiniciar estado
+    memset(frame_copy, 0, sizeof(frame_copy));
+    return -1;
+} 

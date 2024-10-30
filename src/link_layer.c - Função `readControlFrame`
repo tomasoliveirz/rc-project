@@ -1,0 +1,14 @@
+    if (res < 0)
+    {
+        if (errno == EINTR)
+        {
+            // Tratamento específico para interrupções
+            LOG_PRINTF("[READ_CONTROL_FRAME] Leitura interrompida por sinal\n");
+            continue;
+        }
+        perror("[READ_CONTROL_FRAME] Erro ao ler da porta serial");
+        // Limpar buffer e reiniciar estado
+        memset(&temp_frame, 0, sizeof(temp_frame));
+        state = START_STATE;
+        return 0;
+    } 
