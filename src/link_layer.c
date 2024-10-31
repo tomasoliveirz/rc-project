@@ -35,6 +35,8 @@ unsigned char readControlFrame(int fd);
 extern int fd;  // Descritor da porta serial
 int unexpecte_disc = 0;
 
+int transmitter_reply = 0; 
+int ua_received = 0;
 int expected_seq_n = 0; // Número de sequência esperado para recepção
 int seq_n = 0;           // Número de sequência atual para transmissão
 
@@ -1042,6 +1044,8 @@ int llclose(int showStatistics) {
             switch (state) {
                 case START_STATE:
                     if (byte == FLAG) {
+                        transmitter_reply = 0;
+                        ua_received = 0;
                         state = FLAG_RCV;
                         LOG_PRINTF("[LLCLOSE (Receiver)] FLAG recebido, mudando para estado FLAG_RCV\n");
                     }
@@ -1049,6 +1053,11 @@ int llclose(int showStatistics) {
                 case FLAG_RCV:
                     if (byte == A_TRANSMITTER_COMMAND) {
                         temp_frame.a = byte;
+                        state = A_RCV;
+                        LOG_PRINTF("[LLCLOSE (Receiver)] Campo A recebido: 0x%02X, mudando para estado A_RCV\n", byte);
+                    } else if (byte == A_TRANSMITTER_REPLY) {
+                        temp_frame.a = byte;
+                        transmitter_reply = 1;
                         state = A_RCV;
                         LOG_PRINTF("[LLCLOSE (Receiver)] Campo A recebido: 0x%02X, mudando para estado A_RCV\n", byte);
                     } else if (byte != FLAG) {
@@ -1061,6 +1070,11 @@ int llclose(int showStatistics) {
                         temp_frame.c = byte;
                         state = C_RCV;
                         LOG_PRINTF("[LLCLOSE (Receiver)] Campo C recebido: 0x%02X (C_DISC), mudando para estado C_RCV\n", byte);
+                    } else if (byte == C_UA) {
+                        temp_frame.c = byte;
+                        ua_received = 1;
+                        state = C_RCV;
+                        LOG_PRINTF("[LLCLOSE (Receiver)] Campo C recebido: 0x%02X (C_UA), mudando para estado C_RCV\n", byte);
                     } else if (byte == FLAG) {
                         state = FLAG_RCV;
                         LOG_PRINTF("[LLCLOSE (Receiver)] FLAG recebido, mudando para estado FLAG_RCV\n");
@@ -1105,7 +1119,11 @@ int llclose(int showStatistics) {
                         unsigned char cField = readControlFrame(fd);
                         LOG_PRINTF("[LLCLOSE (Receiver)] Received cField: 0x%02X\n", cField);
 
-                        if (cField == C_UA) {
+                        if (cField == C_UA || (ua_received && transmitter_reply)) {
+                            if (ua_received && transmitter_reply){
+                                printf("testestestest\n");
+                            }
+                            LOG_PRINTF("[LLCLOSE (Receiver)] ua_received = %d, transmitter_reply = %d\n", ua_received, transmitter_reply);
                             // UA recebido, conexão encerrada
                             LOG_PRINTF("[LLCLOSE (Receiver)] UA recebido. Conexão encerrada com sucesso (Receptor)\n");
                             if (closeSerialPort() < 0) {
