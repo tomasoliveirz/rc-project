@@ -241,16 +241,16 @@ int frame_build(unsigned char *frame, unsigned char c) {
             frame[1] = A_TRANSMITTER_COMMAND;
             LOG_PRINTF("[FRAME_BUILD] Role Tx: Set A to TRANSMITTER_COMMAND (0x%02X) at position 1\n", A_TRANSMITTER_COMMAND);
         } else {
-            frame[1] = A_RECEIVER_REPLY;
-            LOG_PRINTF("[FRAME_BUILD] Role Tx: Set A to RECEIVER_REPLY (0x%02X) at position 1\n", A_RECEIVER_REPLY);
+            frame[1] = A_TRANSMITTER_REPLY;
+            LOG_PRINTF("[FRAME_BUILD] Role Tx: Set A to TRANSMITTER_REPLY (0x%02X) at position 1\n", A_TRANSMITTER_REPLY);
         }
     } else {
         if (c == C_SET || c == C_DISC) {
             frame[1] = A_RECEIVER_COMMAND;
             LOG_PRINTF("[FRAME_BUILD] Role Rx: Set A to RECEIVER_COMMAND (0x%02X) at position 1\n", A_RECEIVER_COMMAND);
         } else {
-            frame[1] = A_TRANSMITTER_REPLY;
-            LOG_PRINTF("[FRAME_BUILD] Role Rx: Set A to TRANSMITTER_REPLY (0x%02X) at position 1\n", A_TRANSMITTER_REPLY);
+            frame[1] = A_RECEIVER_REPLY;
+            LOG_PRINTF("[FRAME_BUILD] Role Rx: Set A to RECEIVER_REPLY (0x%02X) at position 1\n", A_RECEIVER_REPLY);
         }
     }
 
@@ -1030,7 +1030,8 @@ int llclose(int showStatistics) {
         State state = START_STATE;
         frame_header temp_frame;
         int attempts = 0;
-
+        transmitter_reply = 0;
+        ua_received = 0;
         LOG_PRINTF("[LLCLOSE] Receptor: Esperando receber frame DISC\n");
         while (1) {
             int res = readByteSerialPort(&byte);
@@ -1044,8 +1045,6 @@ int llclose(int showStatistics) {
             switch (state) {
                 case START_STATE:
                     if (byte == FLAG) {
-                        transmitter_reply = 0;
-                        ua_received = 0;
                         state = FLAG_RCV;
                         LOG_PRINTF("[LLCLOSE (Receiver)] FLAG recebido, mudando para estado FLAG_RCV\n");
                     }
