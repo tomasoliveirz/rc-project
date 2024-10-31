@@ -41,7 +41,7 @@ int seq_n = 0;           // Número de sequência atual para transmissão
 volatile sig_atomic_t timeout_flag = 0;
 int alarmCount = 0;
 
-// Adicionando Estrutura para Estatísticas
+// Estrutura para Estatísticas com tempo de transmissão e recepção
 typedef struct {
     // Estatísticas de Transmissão
     struct {
@@ -56,6 +56,9 @@ typedef struct {
 
         // Timeouts
         int timeouts;
+
+        // Tempo de transmissão
+        struct timeval transmission_time;
     } transmission;
 
     // Estatísticas de Recepção
@@ -72,9 +75,11 @@ typedef struct {
         // Outros
         int duplicate_frames;
         int rejections_sent;
+
+        // Tempo de recepção
+        struct timeval reception_time;
     } reception;
 } LinkLayerStats;
-
 // Inicializando Estatísticas
 LinkLayerStats stats = {0};
 
@@ -99,8 +104,13 @@ void get_current_timestamp(char *buffer, size_t size) {
 } while(0)
 
 // Função para Imprimir Estatísticas
+// Função para Imprimir Estatísticas com tempo de transmissão e recepção
 void print_statistics() {
     LOG_PRINTF("\n===== Estatísticas da Conexão =====\n");
+
+    struct timeval current_time;
+    gettimeofday(&current_time, NULL);
+    double transmission_duration = 0.0;
 
     if (connectionParameters.role == LlTx) {
         LOG_PRINTF("===== Estatísticas de Transmissão =====\n");
@@ -117,6 +127,11 @@ void print_statistics() {
 
         // Timeouts
         LOG_PRINTF("Timeouts Ocorridos: %d\n", stats.transmission.timeouts);
+
+        // Tempo de transmissão
+        transmission_duration = (current_time.tv_sec - stats.transmission.transmission_time.tv_sec) +
+                                (current_time.tv_usec - stats.transmission.transmission_time.tv_usec) / 1e6;
+        LOG_PRINTF("Tempo de Transmissão: %.3f segundos\n", transmission_duration);
     } else {
         LOG_PRINTF("===== Estatísticas de Recepção =====\n");
         // Quadros Recebidos
@@ -133,12 +148,15 @@ void print_statistics() {
         // Outros
         LOG_PRINTF("Número de Quadros Duplicados Recebidos: %d\n", stats.reception.duplicate_frames);
         LOG_PRINTF("Número de Quadros Rejeitados (REJ) Enviados: %d\n", stats.reception.rejections_sent);
+
+        // Tempo de recepção
+        transmission_duration = (current_time.tv_sec - stats.reception.reception_time.tv_sec) +
+                                (current_time.tv_usec - stats.reception.reception_time.tv_usec) / 1e6;
+        LOG_PRINTF("Tempo de Recepção: %.3f segundos\n", transmission_duration);
     }
 
     LOG_PRINTF("=====================================\n\n");
 }
-
-
 // Manipulador de alarme
 void alarm_handler(int signo) {
     timeout_flag = 1;
@@ -325,6 +343,7 @@ void alarm_config() {
 
 
 // Função para enviar um frame e esperar a confirmação
+// Função para enviar um frame e esperar a confirmação com registro de tempo
 int sendFrameAndWait(unsigned char *frame, int framesize) {
     int attempts = 0;
     int rej_count = 0; // Contador de REJ recebidos
@@ -363,12 +382,19 @@ int sendFrameAndWait(unsigned char *frame, int framesize) {
             // Confirmação recebida
             alarm(0);
             LOG_PRINTF("[SEND_FRAME_AND_WAIT] Confirmação recebida: 0x%02X. Sucesso.\n", cField);
+
+            // Se for o transmissor e receber UA após enviar SET, armazena o tempo
+            if (connectionParameters.role == LlTx && frame_type == C_SET && cField == C_UA) {
+                gettimeofday(&stats.transmission.transmission_time, NULL);
+                LOG_PRINTF("[SEND_FRAME_AND_WAIT] Tempo de recepção de UA armazenado.\n");
+            }
+
             return 1;
         } else if (cField == C_REJ0 || cField == C_REJ1) {
             // REJ recebido, incrementar contador de REJ
             alarm(0);
             rej_count++;
-            attempts++;
+            attempts = 0;
             if (frame_type == C_I0 || frame_type == C_I1) {
                 stats.transmission.retransmissions_I_frames++;
             } else {
@@ -399,7 +425,6 @@ int sendFrameAndWait(unsigned char *frame, int framesize) {
     LOG_PRINTF("[SEND_FRAME_AND_WAIT] Número máximo de tentativas (%d) excedido. Falha ao enviar frame.\n", connectionParameters.nRetransmissions);
     return -1;
 }
-
 // Função para ler um frame de controle
 unsigned char readControlFrame(int fd) {
     unsigned char byte, cField = 0;
@@ -497,6 +522,7 @@ unsigned char readControlFrame(int fd) {
 // LL1
 //////////////////////////////////////////////
 
+// Função llopen modificada para registrar tempo de recepção
 int llopen(LinkLayer cParams) {
     // Inicializa os parâmetros da conexão
     LOG_PRINTF("[LLOPEN] Inicializando llopen com role %s\n",
@@ -590,7 +616,11 @@ int llopen(LinkLayer cParams) {
                     break;
                 case BCC_OK:
                     if (byte == FLAG) {
-                        // SET frame recebido, envia UA
+                        // SET frame recebido, armazena o tempo
+                        gettimeofday(&stats.reception.reception_time, NULL);
+                        LOG_PRINTF("[LLOPEN (Receiver)] Tempo de recepção de SET armazenado.\n");
+
+                        // Envia UA
                         unsigned char ua_frame[5];
                         frame_build(ua_frame, C_UA);
                         int res_write = writeBytesSerialPort(ua_frame, 5);
@@ -620,7 +650,6 @@ int llopen(LinkLayer cParams) {
     LOG_PRINTF("[LLOPEN] Role não reconhecida. Falha ao abrir conexão.\n");
     return -1;
 }
-
 //////////////////////////////////////////////
 // LLWRITE
 //////////////////////////////////////////////
@@ -672,21 +701,20 @@ int llread(unsigned char *packet) {
     while (tentativa_leitura < MAX_TENTATIVAS) {
         int res = readByteSerialPort(&byte);
         if (res < 0) {
-            perror("[LLREAD] Erro ao ler da porta serial");
+            perror("[LLREAD] Erro ao ler da serial port");
             return -1;
         } else if (res == 0) {
-            // Nenhum dado lido, verificar timeout
             if (timeout_flag) {
                 LOG_PRINTF("[LLREAD] Timeout atingido durante a leitura.\n");
-                stats.transmission.timeouts++; // Note: Correção aqui
+                stats.transmission.timeouts++; 
                 timeout_flag = 0;
                 tentativa_leitura++;
                 state = START_STATE;
                 clean_buffer(dataBuffer, sizeof(dataBuffer), &dataSize);
-                LOG_PRINTF("[LLREAD] Reinicializando o estado para nova tentativa (%d/%d)\n", tentativa_leitura, MAX_TENTATIVAS);
+                LOG_PRINTF("[LLREAD] A reinicializar o estado para uma nova tentativa (%d/%d)\n", tentativa_leitura, MAX_TENTATIVAS);
                 continue;
             }
-            continue; // Continuar esperando dados
+            continue; 
         }
 
         switch (state) {
@@ -740,6 +768,8 @@ int llread(unsigned char *packet) {
 
                 // Identificar tipo de frame
                 if (c_field == C_REJ0 || c_field == C_REJ1 || c_field == C_RR0 || c_field == C_RR1) {
+                    // resetar as retries
+                    tentativa_leitura = 0;
                     LOG_PRINTF("[LLREAD] Frame de controle recebido: 0x%02X\n", c_field);
                     // Atualizar estatísticas de quadros recebidos
                     if (c_field == C_RR0 || c_field == C_RR1) {
@@ -760,7 +790,7 @@ int llread(unsigned char *packet) {
                 } else {
                     if (dataSize >= sizeof(dataBuffer)) {
                         LOG_PRINTF("[LLREAD] Overflow no buffer de dados\n");
-                        // Enviar REJ
+
                         unsigned char rej_frame[5];
                         unsigned char rej_c = (expected_seq_n == 0) ? C_REJ0 : C_REJ1;
                         frame_build(rej_frame, rej_c);
@@ -774,7 +804,7 @@ int llread(unsigned char *packet) {
                         state = START_STATE;
                         continue;
                     }
-                    // Receber dados
+
                     dataBuffer[dataSize++] = byte;
                     state = DATA_RCV;
                     LOG_PRINTF("[LLREAD] Iniciando recepção de dados. Primeiro byte de dados: 0x%02X\n", byte);

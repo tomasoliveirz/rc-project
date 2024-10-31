@@ -4,6 +4,7 @@
         "errno.h": "c",
         "link_layer.h": "c",
         "constants.h": "c",
-        "application_layer.h": "c"
+        "application_layer.h": "c",
+        "compare": "c"
     }
 }
