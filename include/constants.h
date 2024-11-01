@@ -28,7 +28,7 @@
 
 #define TIMEOUT_SEC 1
 
-#define MAX_FRAME_SIZE 2000
+#define MAX_FRAME_SIZE 1024
  // Defina conforme necessário
 
 #define STUFFING_BYTE 0x20
