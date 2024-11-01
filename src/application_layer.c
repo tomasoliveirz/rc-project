@@ -352,6 +352,7 @@ int receiveImage(const char *filename) {
 
             sequence_number = (sequence_number + 1) % MAX_SEQUENCE_NUMBER;
         } else {
+
             fprintf(stderr, "[RECEIVE_IMAGE] Unknown packet type: %d\n", packet_buffer[0]);
             fclose(file);
             llclose(0);
